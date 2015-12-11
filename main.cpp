@@ -3,14 +3,13 @@
 
 #include <cmath>
 
-#include <mpi.h>
+#include "mpi/mpi.h"
 
 #include <vector>
 #include <array>
 #include <algorithm>
 
 const double EPS = 0.0000001;
-int DIMENSION;
 
 using namespace std;
 using Matrix1D = std::vector<double>;
@@ -31,7 +30,7 @@ void init(int N, Matrix2D& A, Matrix1D& F, Matrix1D& X)
 }
 
 
-void load_data(Matrix2D& A, Matrix1D& F, Matrix1D& X)
+void load_data(Matrix2D& A, Matrix1D& F, Matrix1D& X, int DIMENSION)
 {
     srand(time(0));
     cout << "Alive";
@@ -50,28 +49,28 @@ void load_data(Matrix2D& A, Matrix1D& F, Matrix1D& X)
 }
 
 
-void display_1d(Matrix1D& arg)
-{
-    for (size_t i = 0; i < DIMENSION; i++)
-        cout << arg[i] << endl;
-    cout << "=========================";
-}
-
-
-void display_2d(Matrix2D& arg)
-{
-    for (size_t i = 0; i < DIMENSION; i++) {
-        for (int g = 0; g < DIMENSION; g++)
-            cout << arg[i][g] << " ";
-        cout << endl;
-    }
-    cout << endl;
-}
+//void display_1d(Matrix1D& arg)
+//{
+//    for (size_t i = 0; i < DIMENSION; i++)
+//        cout << arg[i] << endl;
+//    cout << "=========================";
+//}
+//
+//
+//void display_2d(Matrix2D& arg)
+//{
+//    for (size_t i = 0; i < DIMENSION; i++) {
+//        for (int g = 0; g < DIMENSION; g++)
+//            cout << arg[i][g] << " ";
+//        cout << endl;
+//    }
+//    cout << endl;
+//}
 
 
 void approx_init(Matrix1D& X)
 {
-    for (size_t i = 0; i < DIMENSION; i++)
+    for (size_t i = 0; i < X.size(); i++)
         X[i] = 1;
 }
 
@@ -109,7 +108,7 @@ int main(int argc, char* argv[])
     MPI_Comm_size(MPI_COMM_WORLD,&size);
     MPI_Comm_rank(MPI_COMM_WORLD,&rank);
 
-    int dimension = 1000;
+    int dimension = 10000;
 //    double startwtime = 0.0;  double endwtime;
     int startIndex = 0; int endIndex = 0;
 
@@ -133,7 +132,7 @@ int main(int argc, char* argv[])
         cout << "Main processor, total procs: " << size << endl;
 
         init(dimension, A, F, X);
-        load_data(A, F, X);
+        load_data(A, F, X, dimension);
 
         MPI_Bcast(&A.front(), dimension, MPI_INT, 0, MPI_COMM_WORLD);
         cout << "A -- cast completed" << endl;
