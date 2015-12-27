@@ -16,19 +16,18 @@ using Matrix1D = std::vector<double>;
 using Matrix2D = std::vector<std::vector<double> >;
 
 
-void load_data(Matrix1D& A, Matrix1D& F, Matrix1D& X, int DIMENSION)
+void load_data(Matrix2D& A, Matrix1D& F, Matrix1D& X, int DIMENSION)
 {
     srand(time(0));
-//    cout << "Load data entry...";
+
     for (int i = 0; i < DIMENSION; i++) {
-//        cout << "Alive entry Load_Data" << i << endl;
+        A[i].resize(DIMENSION);
+
         for (int j = 0; j < DIMENSION; j++) {
-//            cout << "I alive" << j << endl;
             if (i == j)
-                A[i+j] = 100 * DIMENSION + rand() % 300 * DIMENSION;
+                A[i][j] = 100 * DIMENSION + rand() % 300 * DIMENSION;
             else
-                A[i+j] = 1 + rand() % 10;
-//            cout << A[i+j] << endl;
+                A[i][j] = 1 + rand() % 10;
         }
         F[i] = 1 + rand() % 10;
         X[i] = 1;
@@ -36,85 +35,32 @@ void load_data(Matrix1D& A, Matrix1D& F, Matrix1D& X, int DIMENSION)
     cout << "Dataload finished!" << endl;
 }
 
-
-//void display_1d(Matrix1D& arg)
-//{
-//    for (size_t i = 0; i < DIMENSION; i++)
-//        cout << arg[i] << endl;
-//    cout << "=========================";
-//}
-//
-//
-//void display_2d(Matrix2D& arg)
-//{
-//    for (size_t i = 0; i < DIMENSION; i++) {
-//        for (int g = 0; g < DIMENSION; g++)
-//            cout << arg[i][g] << " ";
-//        cout << endl;
-//    }
-//    cout << endl;
-//}
-
-
-void approx_init(Matrix1D& X)
-{
-    for (size_t i = 0; i < X.size(); i++)
-        X[i] = 1;
-}
-
-
 /// N - размерность матрицы; A[N][N] - матрица коэффициентов, F[N] - столбец свободных членов,
 /// X[N] - начальное приближение, также ответ записывается в X[N];
 
-//void solve_worker(int iternum, Matrix1D& A, Matrix1D& X, Matrix1D& F, int startIndex, int endIndex, int N)
-//{
-//    int col_len = N;
-//    Matrix1D TempX(endIndex-startIndex);
-//    cout << "Entry worker, index: " << endIndex << endl;
-//    for (int run = 0; run < iternum; run++)
-//    {
-//        for (int i = startIndex; i <= endIndex; i++)
-//        {
-//            TempX[i] = F[i];
-//            for (int g = 0; g < col_len; g++)
-//            {
-//                if (i != g)
-//                    TempX[i] -= A[i+g] * X[g];
-//                cout << "worker from i,g: [" << i << "," << g << "]" << endl;
-//            }
-//            TempX[i] /= A[i+i];
-//        }
-//        cout << "Eror?" << endl;
-//        // Here was 'norm' calculation - it's deprecated now.
-//    }
-//}
-
-
-void solve_worker(int iternum, Matrix1D* A, Matrix1D* X, Matrix1D* F, int startIndex, int endIndex, int N, int rank)
+void solve_worker(Matrix2D chunkA, Matrix1D chunkX, Matrix1D chunkF, int iternum, int N, int rank)
 {
-    int col_len = N;
-    Matrix1D TempX(endIndex-startIndex);
-    cout << "Entry worker, index: " << endIndex << endl;
+    cout << "Worker launched from process #" << rank << endl;
+    cout << chunkA[0][0] << endl;
+    cout << chunkF[0] << endl;
+    cout << chunkX[0] << endl;
+    Matrix1D TempX(chunkX.size());
+    cout << "Worker launched from process #" << rank << endl;
     for (int run = 0; run < iternum; run++)
     {
-        for (int i = startIndex; i <= endIndex; i++)
+        for (int i = 0; i < chunkA.size(); i++)
         {
-            TempX[i] = F->at(i);
-            for (int g = 0; g < col_len; g++)
+            TempX[i] = chunkF[i];
+            for (int g = 0; g < N; g++)
             {
                 if (i != g)
-                    TempX[i] -= A->at(i+g) * X->at(g);
-//                cout << "worker from i,g: [" << i << "," << g << "]" << endl;
+                    TempX[i] -= chunkA[i][g] * chunkX[g];
             }
-            TempX[i] /= A->at(i+i);
+            TempX[i] /= chunkA[i][i];
         }
-        cout << "Eror in proc" << rank << endl;
-        // Here was 'norm' calculation - it's deprecated now.
     }
+    cout << "Worker #" << rank << " has completed normally" << endl;
 }
-
-
-
 
 
 int main(int argc, char* argv[])
@@ -122,81 +68,91 @@ int main(int argc, char* argv[])
     int rank, size;
 
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD,&size);
-    MPI_Comm_rank(MPI_COMM_WORLD,&rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    int iterations = 1; ////////////////////////
-    int dimension  = 100;     ///////////////////////
+    int iterations = 5;       ////////////////////////
+    int dimension = 100;     ///////////////////////
     int startIndex = 0;
-    int endIndex   = 0;
-    int chunk      = dimension / (size-1);
+    int endIndex = 0;
+    int chunk = dimension / (size - 1);
 
-    Matrix1D A(dimension * dimension);  //N*N
-    Matrix1D F(dimension);  //N
-    Matrix1D X(dimension);  //N
 
-    if (dimension % (size-1) != 0) {
+    if (dimension % (size - 1) != 0) {
         MPI_Finalize();
-        cout << "Processes_num should be divisor of dimension!";
+        cout << "Process number must be divisor of dimension!";
         return 0;
     }
 
-    if (rank == 0) {
-        cout << "Main processor, total procs: " << size << endl;
-//        init(dimension, A, F, X);
-        load_data(A, F, X, dimension);
+    //for (int i = 1; i < size; i++)
+    //{   // Set task for workers
+        if (rank == 0)
+        {
+            Matrix2D A(dimension);  //N*N
+            Matrix1D F(dimension);  //N
+            Matrix1D X(dimension);  //N
 
-        for (int i=1; i < size; i++) {
-            startIndex = (dimension / (size - 1)) * (i - 1);
-            endIndex = ((dimension / (size - 1)) * i) - 1;
-            cout << "Master process sends to process#" << i << " values [start, end]: " << startIndex << " - " << endIndex << endl;
-            MPI_Send(&startIndex, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-            MPI_Send(&endIndex, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
-//            cout << "Send ok #" << i <<  endl;
-        }
-    }
-    else if (rank != 0) {
-        MPI_Recv(&startIndex, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        MPI_Recv(&endIndex, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        cout << "Process#" << rank << " received values: [" << startIndex << "," << endIndex << endl;
-    }
+            cout << "Main, total processors: " << size << endl;
+            load_data(A, F, X, dimension);
 
-    MPI_Barrier(MPI_COMM_WORLD);
-    cout << "Starting bcast" << endl;
-    MPI_Bcast(&A[0], A.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    cout << "A -- cast completed" << endl;
-    MPI_Bcast(&F[0], F.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    cout << "F -- cast completed" << endl;
-    MPI_Bcast(&X[0], X.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    cout << "X -- cast completed" << endl;
-
-    if (rank != 0) {
-        cout << "worker launched from rank:" << rank << endl;
-                Matrix1D TempX(endIndex-startIndex);
-                for (int run = 0; run < iterations; run++)
-                {
-                    for (int i = startIndex; i <= endIndex; i++)
-                    {
-                        TempX[i] = F[i];
-                        for (int g = 0; g < dimension; g++)
-                        {
-                            if (i != g)
-                                TempX[i] -= A[i+g] * X[g];
-//                            cout << "worker from i,g: [" << i << "," << g << "]" << endl;
-                        }
-                        TempX[i] /= A[i+i];
-                    }
-                    cout << "Eror?" << endl;
-                    // Here was 'norm' calculation - it's deprecated now.
+            for (int i = 1; i < size; i++)
+            {   // Set task for workers
+                Matrix2D chunkA(chunk); // chunk*N
+                for (int b = 0; b < chunk; b++) {
+                    chunkA[b].resize(dimension);
                 }
+                Matrix1D chunkF(dimension);
+                Matrix1D chunkX(dimension);
 
-//        solve_worker(iterations, &A, &X, &F, startIndex, endIndex, dimension, rank);
-    }
-    //solve_worker(iterations, A, X, F, startIndex, endIndex);
+                startIndex = chunk * (i - 1);
+                endIndex = chunk * i - 1;
+
+                for (int j = startIndex; j <= endIndex; j++)
+                {
+//                    cout << "Startindex=" << startIndex << ", endIndex=" << endIndex << ", j=" << j << endl;
+                    for (int x = 0; x < dimension; x++)
+                    {
+//                        cout << j-startIndex << endl;
+                        chunkA[j - startIndex][x] = A[j][x];
+                    }
+                    chunkF[j - startIndex] = F[j];
+                    chunkX[j - startIndex] = X[j];
+//                    cout << "Slicing iteration #" << j << "has finished!" << endl;
+                }
+                cout << "Master sends to process #" << i << " array[start, end]: " << startIndex << " - " << endIndex << endl;
+                MPI_Send(&chunkA.front(), chunkA.size(), MPI_FLOAT, i, 0, MPI_COMM_WORLD);
+                cout << "Master sent to process # array A" << endl;
+                MPI_Send(&chunkF.front(), chunkF.size(), MPI_FLOAT, i, 1, MPI_COMM_WORLD);
+                cout << "Master sent to process # array F" << endl;
+                MPI_Send(&chunkX.front(), chunkX.size(), MPI_FLOAT, i, 2, MPI_COMM_WORLD);
+                cout << "Master sent to process # array X" << endl;
+                cout << "Send for #" << i << " is OK!" << endl;
+            }
+        }
+        else if (rank != 0)
+        {
+            cout << "Process " << rank << "reached this code" << endl;
+            Matrix2D chunkA(chunk);
+            for (int b = 0; b < chunk; b++) {
+                chunkA[b].resize(dimension);
+            }
+            Matrix1D chunkF(dimension);
+            Matrix1D chunkX(dimension);
+
+            cout << "Process #"<< rank <<" -- Declaring buffers is ok!" << endl;
+
+            MPI_Recv(&chunkA.front(), chunkA.size(), MPI_FLOAT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(&chunkF.front(), chunkF.size(), MPI_FLOAT, 0, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            MPI_Recv(&chunkX.front(), chunkX.size(), MPI_FLOAT, 0, 2, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+            cout << "Process #" << rank << " received values. " << endl;
+
+            solve_worker(chunkA, chunkX, chunkF, iterations, dimension, rank);\
+            cout << "Process #" << rank << " completed. " << endl;
+        }
+    //}
     MPI_Barrier(MPI_COMM_WORLD);
-
-    cout << "Completed " << endl;
-
+    MPI_Finalize();
 
     return 0;
 }
